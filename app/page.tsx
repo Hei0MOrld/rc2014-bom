@@ -206,6 +206,20 @@ export default function Home() {
                             ))}
                             <option value={SKIP}>— skip this line —</option>
                           </select>
+                          {(() => {
+                            const chosen = r.candidates[parseInt(selections[i] ?? "0", 10)];
+                            if (!chosen) return null;
+                            return (
+                              <a
+                                href={chosen.part.productUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="w-fit text-xs text-blue-600 underline dark:text-blue-400"
+                              >
+                                View on {SUPPLIER_LABEL[chosen.part.supplier]} →
+                              </a>
+                            );
+                          })()}
                           {r.error && (
                             <span className="text-xs text-amber-600 dark:text-amber-500">
                               ⚠ {r.error} (showing results from the other supplier only)
