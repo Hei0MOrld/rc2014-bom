@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { ParsedBomLine } from "@/lib/bom-parser";
 import type { RankedCandidate } from "@/lib/match-ranker";
 import { buildPasteListsBySupplier, type CartSelection } from "@/lib/cart-builder";
+import { DIGIKEY_SITES, type DigiKeySite } from "@/lib/digikey-client";
 
 interface MatchResult {
   line: ParsedBomLine;
@@ -60,6 +61,7 @@ const SKIP = "__skip__";
 
 export default function Home() {
   const [bomText, setBomText] = useState(SAMPLE_BOM);
+  const [digikeySite, setDigikeySite] = useState<DigiKeySite>("JP");
   const [results, setResults] = useState<MatchResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [selections, setSelections] = useState<Record<number, string>>({});
@@ -72,7 +74,7 @@ export default function Home() {
       const res = await fetch("/api/match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bomText }),
+        body: JSON.stringify({ bomText, digikeySite }),
       });
       const data = await res.json();
       setResults(data.results);
@@ -99,22 +101,32 @@ export default function Home() {
     return buildPasteListsBySupplier(chosen.filter((c) => c !== null));
   }, [results, selections]);
 
+  // Mouser is always priced in JPY (its account-locked currency); DigiKey's
+  // currency now follows the chosen country. Summing raw numbers across two
+  // different currencies would silently produce a meaningless total, so
+  // track which currency symbol each chosen line actually used and only
+  // show one combined total when they all agree.
   const totalCost = useMemo(() => {
     if (!results) return null;
     let total = 0;
     let anyPriced = false;
+    const currencySymbols = new Set<string>();
     results.forEach((r, i) => {
       const sel = selections[i] ?? "0";
       if (sel === SKIP) return;
       const candidate = r.candidates[parseInt(sel, 10)];
       if (!candidate) return;
+      const symbol = candidate.part.price.replace(/[\d.,\s]/g, "");
       const price = parseFloat(candidate.part.price.replace(/[^\d.]/g, ""));
       if (Number.isFinite(price)) {
         total += price * r.line.quantity;
         anyPriced = true;
+        if (symbol) currencySymbols.add(symbol);
       }
     });
-    return anyPriced ? total : null;
+    if (!anyPriced) return null;
+    if (currencySymbols.size > 1) return { mixed: true as const };
+    return { mixed: false as const, symbol: [...currencySymbols][0] ?? "", total };
   }, [results, selections]);
 
   async function handleCopy(supplier: CartSelection["supplier"]) {
@@ -158,6 +170,27 @@ export default function Home() {
             value={bomText}
             onChange={(e) => setBomText(e.target.value)}
           />
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs text-zinc-600 dark:text-zinc-400">
+              DigiKey country:
+            </label>
+            <select
+              className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+              value={digikeySite}
+              onChange={(e) => setDigikeySite(e.target.value as DigiKeySite)}
+            >
+              {DIGIKEY_SITES.map((s) => (
+                <option key={s.code} value={s.code}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-zinc-500 dark:text-zinc-500">
+              Mouser results always reflect this tool&apos;s own account
+              country (Japan) — Mouser&apos;s search API has no per-request
+              country/currency option.
+            </span>
+          </div>
           <button
             onClick={handleMatch}
             disabled={loading}
@@ -240,11 +273,19 @@ export default function Home() {
               </tbody>
             </table>
 
-            {totalCost !== null && (
-              <p className="text-sm font-medium text-black dark:text-zinc-50">
-                Cheapest-combination total: ¥{totalCost.toFixed(2)}
-              </p>
-            )}
+            {totalCost !== null &&
+              (totalCost.mixed ? (
+                <p className="text-sm text-amber-600 dark:text-amber-500">
+                  Chosen parts span more than one currency (Mouser is always
+                  JPY; DigiKey follows the selected country above) — see
+                  per-line prices rather than a single misleading total.
+                </p>
+              ) : (
+                <p className="text-sm font-medium text-black dark:text-zinc-50">
+                  Cheapest-combination total: {totalCost.symbol}
+                  {totalCost.total.toFixed(2)}
+                </p>
+              ))}
 
             {(Object.keys(pasteListsBySupplier) as CartSelection["supplier"][]).map((supplier) => (
               <div

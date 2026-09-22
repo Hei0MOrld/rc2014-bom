@@ -69,6 +69,38 @@ interface DigiKeySearchResponse {
   }>;
 }
 
+// Covers every currency X-DIGIKEY-Locale-Currency's docs list as acceptable.
+// CNY uses "CN¥" rather than a bare "¥" specifically to stay visually
+// distinct from JPY in a UI that may show both across different searches.
+const CURRENCY_SYMBOL: Record<string, string> = {
+  USD: "$",
+  CAD: "CA$",
+  JPY: "¥",
+  GBP: "£",
+  EUR: "€",
+  HKD: "HK$",
+  SGD: "S$",
+  TWD: "NT$",
+  KRW: "₩",
+  AUD: "A$",
+  NZD: "NZ$",
+  INR: "₹",
+  DKK: "kr",
+  NOK: "kr",
+  SEK: "kr",
+  ILS: "₪",
+  CNY: "CN¥",
+  PLN: "zł",
+  CHF: "CHF",
+  CZK: "Kč",
+  HUF: "Ft",
+  RON: "lei",
+  ZAR: "R",
+  MYR: "RM",
+  THB: "฿",
+  PHP: "₱",
+};
+
 // A DigiKey product typically has several purchasable "variations" (package
 // types) at wildly different minimum order quantities — verified live: a
 // 100k resistor search returned a "Tape & Reel" variation (MOQ 5,000, unit
@@ -85,9 +117,44 @@ export function pickHobbyistVariation(
   )[0];
 }
 
+// Verified live against the real API (not just the docs) for every entry
+// below: X-DIGIKEY-Locale-Site alone does NOT make DigiKey apply that site's
+// natural currency — omitting X-DIGIKEY-Locale-Currency was found to
+// silently return USD regardless of the requested site (e.g. Site: "JP"
+// came back with Currency: "USD"), the opposite of what the docs' wording
+// ("Default value: primary currency for the entered Locale-site") implies.
+// Both headers have to be sent explicitly and paired correctly per site.
+// Mexico (MX) is the one exception found: MXN isn't in DigiKey's own
+// accepted-currency list, so MX pairs with USD instead — also verified live
+// (sending Site: "MX" with no currency header returns Currency: "USD").
+export const DIGIKEY_SITES = [
+  { code: "JP", currency: "JPY", label: "Japan (JPY)" },
+  { code: "US", currency: "USD", label: "United States (USD)" },
+  { code: "UK", currency: "GBP", label: "United Kingdom (GBP)" },
+  { code: "DE", currency: "EUR", label: "Germany (EUR)" },
+  { code: "CA", currency: "CAD", label: "Canada (CAD)" },
+  { code: "AU", currency: "AUD", label: "Australia (AUD)" },
+  { code: "FR", currency: "EUR", label: "France (EUR)" },
+  { code: "KR", currency: "KRW", label: "South Korea (KRW)" },
+  { code: "CN", currency: "CNY", label: "China (CNY)" },
+  { code: "TW", currency: "TWD", label: "Taiwan (TWD)" },
+  { code: "SG", currency: "SGD", label: "Singapore (SGD)" },
+  { code: "HK", currency: "HKD", label: "Hong Kong (HKD)" },
+  { code: "IN", currency: "INR", label: "India (INR)" },
+  { code: "IL", currency: "ILS", label: "Israel (ILS)" },
+  { code: "MX", currency: "USD", label: "Mexico (USD)" },
+] as const;
+
+export type DigiKeySite = (typeof DIGIKEY_SITES)[number]["code"];
+
+function currencyForSite(site: DigiKeySite): string {
+  return DIGIKEY_SITES.find((s) => s.code === site)?.currency ?? "USD";
+}
+
 export async function searchDigiKeyByKeyword(
   keyword: string,
   records = 25,
+  site: DigiKeySite = "JP",
 ): Promise<SupplierPart[]> {
   const clientId = process.env.DIGIKEY_CLIENT_ID;
   const clientSecret = process.env.DIGIKEY_CLIENT_SECRET;
@@ -118,8 +185,11 @@ export async function searchDigiKeyByKeyword(
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
       "X-DIGIKEY-Client-Id": clientId,
-      "X-DIGIKEY-Locale-Site": "JP",
-      "X-DIGIKEY-Locale-Currency": "JPY",
+      "X-DIGIKEY-Locale-Site": site,
+      // Sent explicitly and paired via currencyForSite() — see the
+      // DIGIKEY_SITES comment above for why this can't be left to a
+      // same-currency-as-site default that turned out not to exist.
+      "X-DIGIKEY-Locale-Currency": currencyForSite(site),
     },
     body: JSON.stringify({ Keywords: keyword, Limit: records, Offset: 0 }),
   });
@@ -129,6 +199,9 @@ export async function searchDigiKeyByKeyword(
   }
 
   const data = (await res.json()) as DigiKeySearchResponse;
+  // Real bug fixed here: the price string used to hardcode a "¥" symbol
+  // regardless of which site/currency was actually requested.
+  const currencySymbol = CURRENCY_SYMBOL[currencyForSite(site)] ?? "";
 
   return (data.Products ?? []).map((p) => {
     const variation = pickHobbyistVariation(p.ProductVariations);
@@ -145,7 +218,7 @@ export async function searchDigiKeyByKeyword(
       manufacturer: p.Manufacturer?.Name ?? "",
       manufacturerPartNumber: p.ManufacturerProductNumber,
       description: p.Description?.ProductDescription ?? "",
-      price: unitPrice !== undefined ? `¥${unitPrice}` : "N/A",
+      price: unitPrice !== undefined ? `${currencySymbol}${unitPrice}` : "N/A",
       availability:
         variation?.QuantityAvailableforPackageType !== undefined
           ? `${variation.QuantityAvailableforPackageType} in stock`

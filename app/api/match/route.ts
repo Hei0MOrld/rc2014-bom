@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { parseBomText } from "@/lib/bom-parser";
 import { buildSearchKeyword } from "@/lib/query-builder";
 import { searchMouserByKeyword } from "@/lib/mouser-client";
-import { searchDigiKeyByKeyword } from "@/lib/digikey-client";
+import { searchDigiKeyByKeyword, DIGIKEY_SITES, type DigiKeySite } from "@/lib/digikey-client";
 import { rankCandidates } from "@/lib/match-ranker";
+
+const DIGIKEY_SITE_CODES = new Set(DIGIKEY_SITES.map((s) => s.code));
+function isDigiKeySite(value: unknown): value is DigiKeySite {
+  return typeof value === "string" && DIGIKEY_SITE_CODES.has(value as DigiKeySite);
+}
 
 // Same caps smart-bom (the sibling PedalPCB/Mouser tool this was forked
 // from) uses: bound worst-case damage from one oversized paste against the
@@ -13,11 +18,13 @@ const MAX_BOM_TEXT_CHARS = 20_000;
 const MAX_PARSED_LINES = 150;
 
 export async function POST(req: NextRequest) {
-  const { bomText } = (await req.json()) as { bomText?: string };
+  const { bomText, digikeySite } = (await req.json()) as { bomText?: string; digikeySite?: string };
 
   if (!bomText || typeof bomText !== "string") {
     return NextResponse.json({ error: "bomText is required" }, { status: 400 });
   }
+
+  const site: DigiKeySite = isDigiKeySite(digikeySite) ? digikeySite : "JP";
 
   if (bomText.length > MAX_BOM_TEXT_CHARS) {
     return NextResponse.json(
@@ -43,7 +50,7 @@ export async function POST(req: NextRequest) {
 
       const [mouserResult, digikeyResult] = await Promise.allSettled([
         searchMouserByKeyword(keyword),
-        searchDigiKeyByKeyword(keyword),
+        searchDigiKeyByKeyword(keyword, 25, site),
       ]);
 
       const candidates = [
