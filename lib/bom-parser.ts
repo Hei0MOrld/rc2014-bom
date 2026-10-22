@@ -27,6 +27,8 @@ import {
   parseFrequencyHz,
 } from "./value-normalizer.ts";
 
+import { packageRequirement, type PackageSpec } from "./package.ts";
+
 export type ComponentKind =
   | "resistor"
   | "capacitor"
@@ -48,6 +50,11 @@ export interface ParsedBomLine {
   value: string;
   quantity: number;
   note: string;
+  // Acceptable packages. Taken from the line when it names one ("DIP-40",
+  // "SMD"); otherwise through-hole, because RC2014 kits and modules are
+  // through-hole boards. Found live: with no package check, a "100nf cap"
+  // line picked an 0402 chip capacitor and a 74HCT04 picked a TSSOP.
+  packageRequirement: PackageSpec[];
 }
 
 const DESIGNATOR_KIND: Record<string, ComponentKind> = {
@@ -256,8 +263,27 @@ export function parseBomText(text: string): ParsedBomLine[] {
       value,
       quantity: shape.quantity,
       note: "",
+      packageRequirement: lineRequirement(kind, shape.description),
     });
   }
 
   return parsed;
+}
+
+// Kinds that come in both through-hole and surface-mount versions. Headers,
+// jacks, switches and sockets are searched as through-hole parts already.
+const PACKAGED_KINDS = new Set<ComponentKind>([
+  "resistor",
+  "capacitor",
+  "ic",
+  "diode",
+  "transistor",
+  "potentiometer",
+  "crystal",
+]);
+
+function lineRequirement(kind: ComponentKind, description: string): PackageSpec[] {
+  const stated = packageRequirement([description]);
+  if (stated.length > 0 || !PACKAGED_KINDS.has(kind)) return stated;
+  return [{ mounting: "through-hole" }];
 }

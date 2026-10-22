@@ -66,7 +66,33 @@ interface DigiKeySearchResponse {
     QuantityAvailable?: number;
     ProductUrl?: string;
     ProductVariations?: DigiKeyProductVariation[];
+    Parameters?: DigiKeyParameter[];
   }>;
+}
+
+// Shape per DigiKey's v4 Product Information docs (name/value pairs).
+// Checked against live responses (2026-10): both names come back, e.g.
+// "14-DIP (0.300", 7.62mm); 14-PDIP" and "Through Hole".
+export interface DigiKeyParameter {
+  ParameterText?: string;
+  ValueText?: string;
+}
+
+// Pulls the package and mounting-type text out of a product's parameters.
+// "Package / Case" is the physical package ("14-DIP (0.300\", 7.62mm)");
+// "Supplier Device Package" is DigiKey's short form ("14-PDIP"); either is
+// enough, so both are kept.
+export function extractPackageParameters(parameters: DigiKeyParameter[] | undefined): {
+  packageText?: string;
+  mountingText?: string;
+} {
+  const byName = (name: string) =>
+    parameters?.find((p) => p.ParameterText?.trim().toLowerCase() === name)?.ValueText?.trim() || undefined;
+  const packageParts = [byName("package / case"), byName("supplier device package")].filter(Boolean);
+  return {
+    packageText: packageParts.length ? packageParts.join("; ") : undefined,
+    mountingText: byName("mounting type"),
+  };
 }
 
 // Covers every currency X-DIGIKEY-Locale-Currency's docs list as acceptable.
@@ -226,6 +252,7 @@ export async function searchDigiKeyByKeyword(
             ? `${p.QuantityAvailable} in stock`
             : "Unknown",
       productUrl: p.ProductUrl ?? "#",
+      ...extractPackageParameters(p.Parameters),
     };
   });
 }

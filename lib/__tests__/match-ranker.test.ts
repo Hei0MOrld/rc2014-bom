@@ -26,6 +26,7 @@ function line(overrides: Partial<ParsedBomLine>): ParsedBomLine {
     value: "",
     quantity: 1,
     note: "",
+    packageRequirement: [],
     ...overrides,
   };
 }

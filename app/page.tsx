@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { ParsedBomLine } from "@/lib/bom-parser";
 import type { RankedCandidate } from "@/lib/match-ranker";
+import { formatRequirement } from "@/lib/package";
 import { buildPasteListsBySupplier, type CartSelection } from "@/lib/cart-builder";
 import { DIGIKEY_SITES, type DigiKeySite } from "@/lib/digikey-client";
 
@@ -155,11 +156,14 @@ export default function Home() {
             table pasted with tabs or pipes between columns.
           </p>
           <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-500">
-            Honest limitations: switches, jacks, headers, and IC sockets
-            don&apos;t have a searchable part number the way resistors/caps/
-            crystals/ICs do, so those matches are always marked{" "}
-            <span className="font-mono">[unknown]</span> confidence — check
-            them by hand before ordering. If a table paste doesn&apos;t keep
+            Parts are matched as through-hole (RC2014 boards are) unless a line
+            names a package such as SOIC-14 or SMD.
+            Honest limitations: switches, jacks and headers don&apos;t have a
+            searchable part number the way resistors/caps/crystals/ICs do, so
+            those matches are always marked{" "}
+            <span className="font-mono">[unknown]</span> confidence; IC sockets
+            are <span className="font-mono">[possible]</span> at best, when the
+            pin count matches — check these by hand before ordering. If a table paste doesn&apos;t keep
             its columns separated by tabs or pipes, some rows may not parse.
           </p>
         </div>
@@ -233,7 +237,8 @@ export default function Home() {
                           >
                             {r.candidates.slice(0, 5).map((c, ci) => (
                               <option key={ci} value={ci}>
-                                [{c.confidence}] [{SUPPLIER_LABEL[c.part.supplier]}]{" "}
+                                [{c.confidence}] [{SUPPLIER_LABEL[c.part.supplier]}]
+                                {c.pkg.status === "mismatch" ? " [wrong package]" : ""}{" "}
                                 {c.part.price} — {c.part.description}
                               </option>
                             ))}
@@ -242,7 +247,19 @@ export default function Home() {
                           {(() => {
                             const chosen = r.candidates[parseInt(selections[i] ?? "0", 10)];
                             if (!chosen) return null;
+                            const want = formatRequirement(r.line.packageRequirement);
                             return (
+                              <>
+                              {chosen.pkg.status === "mismatch" && (
+                                <span className="text-xs text-amber-600 dark:text-amber-500">
+                                  ⚠ This line needs {want}; this part is {chosen.pkg.found ?? "a different package"}.
+                                </span>
+                              )}
+                              {chosen.pkg.status === "unknown" && (
+                                <span className="text-xs text-zinc-500">
+                                  Package not confirmed (this line needs {want}) — check before ordering.
+                                </span>
+                              )}
                               <a
                                 href={chosen.part.productUrl}
                                 target="_blank"
@@ -251,6 +268,7 @@ export default function Home() {
                               >
                                 View on {SUPPLIER_LABEL[chosen.part.supplier]} →
                               </a>
+                              </>
                             );
                           })()}
                           {r.error && (

@@ -37,7 +37,12 @@ export function buildSearchKeyword(line: ParsedBomLine): string {
       // ceramic, 100 nF") the same way Eurorack BOMs do in their Description
       // column — reuse the shared extractor rather than re-deriving it.
       const typeHints = extractCapacitorTypeHints(line.description);
-      return typeHints.length > 0 ? `${display} ${typeHints[0]} capacitor` : `${display} capacitor`;
+      const base = typeHints.length > 0 ? `${display} ${typeHints[0]} capacitor` : `${display} capacitor`;
+      // Found live: "100nF capacitor" returns mostly surface-mount chips, so
+      // the cheapest through-hole one in the results was a ¥124 film cap.
+      // Asking for through-hole brings back ¥50-ish leaded ceramics.
+      const throughHole = line.packageRequirement.some((spec) => spec.mounting === "through-hole");
+      return throughHole ? `${base} through hole` : base;
     }
     case "potentiometer":
       return `${value} potentiometer`;

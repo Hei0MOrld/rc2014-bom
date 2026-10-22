@@ -10,4 +10,10 @@ export interface SupplierPart {
   price: string; // display string, e.g. "¥16.60" or "$0.14" — parsed on demand, never stored as a number (currency varies by supplier/locale)
   availability: string;
   productUrl: string;
+  // Structured package data when the supplier provides it (DigiKey's
+  // "Package / Case" / "Supplier Device Package" and "Mounting Type"
+  // parameters). Absent for Mouser, whose keyword search has no package
+  // field; package.ts then falls back to words in the description.
+  packageText?: string;
+  mountingText?: string;
 }
