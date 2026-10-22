@@ -16,7 +16,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npx tsc --noEmit
       - run: npm run lint
+      # Also type-checks (LayoutProps etc. are generated during the build).
       # No API keys in CI: the supplier clients fall back to MOCK parts.
       - run: npm run build
