@@ -49,6 +49,8 @@ The keys are only read on the server, in `app/api/match/route.ts`.
 
 Next.js (App Router) · TypeScript · Tailwind CSS · deployed on Vercel.
 
+Why it is built this way (through-hole by default, how part names and sockets are matched): see [`DESIGN.md`](DESIGN.md) (Japanese, with an English summary).
+
 ## Credits
 
 The package check (`lib/package.ts`) was contributed to [Eurorack BOM](https://github.com/Hei0MOrld/eurorack-bom) by [@daaaaaaaaaniel](https://github.com/daaaaaaaaaniel) and ported here.
